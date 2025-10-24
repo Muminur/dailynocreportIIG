@@ -1,0 +1,963 @@
+I want to build a nextjs app using latest version of nextjs. I do not need hard security implementation for this app. Just keep it simple. This app will require the user to login first using Microsoft account via v2 oauth. (read this https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) The user will give the app permission to read all emails . After that the emails will be parsed by the app such that it first keeps the emails organized by days. We need our app to use all time and dates in GMT +6. The app will generate a NOC summary report of an entire day when users want in the dashboard. For example, when user signs in using their microsoft outlook account support.iig@bsccl.com and give their password, the app uses oauth2 and instantly takes the user to an user dashboard where they can click a button 'Generate today's NOC report", after user clicks on this button, it instantly goes through today's all emails received and replies given only for today to make the summary. For this app, you will need to understand that  use this database for storage if needed. mongodb://root:AD5Db8zE1N0R1bs0LZEfU1winw7QvEzkAYp4Gt2AEIcvhrtVmir5PqcOS826vNtM@os88swc4g4cwo8g8c8gs88c4:27017/?directConnection=true
+
+
+
+# Product Requirements Document (PRD)
+# NOC Email Report Generator
+
+**Version:** 1.0  
+**Last Updated:** October 24, 2025  
+**Document Owner:** Product Team  
+**Status:** Draft
+
+---
+
+## 1. Executive Summary
+
+### 1.1 Product Overview
+NOC Email Report Generator is a web application that automates the creation of daily Network Operations Center (NOC) reports by parsing emails from Microsoft Outlook accounts. The application authenticates users via Microsoft OAuth 2.0, retrieves their emails, and generates structured reports categorizing network incidents, complaints, and service requests.
+
+### 1.2 Problem Statement
+NOC teams currently spend significant time manually reviewing emails and creating daily summary reports. This manual process is time-consuming, error-prone, and delays the distribution of critical operational information.
+
+### 1.3 Solution
+An automated web application that:
+- Authenticates users with their Microsoft Outlook accounts
+- Parses incoming and outgoing emails for the selected date
+- Categorizes incidents by type (Backhaul, Upstreams, IPT Client, ISP Client)
+- Generates editable summary reports
+- Exports reports in XLSX and PDF formats
+
+### 1.4 Success Metrics
+- Report generation time reduced from 30+ minutes to < 2 minutes
+- 100% of daily emails processed and categorized
+- User adoption rate > 80% within first month
+- Export success rate > 95%
+
+---
+
+## 2. Product Goals & Objectives
+
+### 2.1 Primary Goals
+1. **Automate Report Generation**: Eliminate manual email review and report creation
+2. **Improve Accuracy**: Reduce human errors in data entry and categorization
+3. **Enhance Efficiency**: Enable NOC teams to focus on incident resolution rather than documentation
+4. **Ensure Accessibility**: Provide reports in multiple formats (editable table, XLSX, PDF)
+
+### 2.2 Non-Goals (Out of Scope for V1)
+- Multi-language support
+- Historical report analytics or trending
+- Integration with ticketing systems
+- Real-time email monitoring
+- Multi-user collaboration features
+- Role-based access control (admin/user roles)
+- Email sending capabilities
+
+---
+
+## 3. User Personas
+
+### 3.1 Primary Persona: NOC Engineer
+- **Name**: Rashid Ahmed
+- **Role**: Network Operations Center Engineer
+- **Background**: 3-5 years experience in network operations
+- **Goals**: 
+  - Quickly generate accurate daily NOC reports
+  - Reduce time spent on administrative tasks
+  - Have editable reports to make manual adjustments
+- **Pain Points**:
+  - Spending 30-45 minutes daily reviewing emails
+  - Manual data entry errors
+  - Difficulty tracking all incidents across multiple email threads
+
+### 3.2 Secondary Persona: NOC Manager
+- **Name**: Fatema Khan
+- **Role**: NOC Team Manager
+- **Background**: 8+ years in network operations and management
+- **Goals**:
+  - Review daily incident summaries
+  - Identify patterns in network issues
+  - Share reports with stakeholders
+- **Pain Points**:
+  - Inconsistent report formats from different team members
+  - Delays in receiving daily summaries
+  - Difficulty extracting data for management presentations
+
+---
+
+## 4. Functional Requirements
+
+### 4.1 Authentication & Authorization
+
+#### 4.1.1 Microsoft OAuth 2.0 Login
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Users must authenticate using Microsoft OAuth 2.0 v2 endpoint
+- Application must request permission to read emails (`Mail.Read` scope)
+- Upon successful authentication, redirect to user dashboard
+- Session management with secure token storage
+- Automatic token refresh handling
+
+**Acceptance Criteria:**
+- User can click "Sign in with Microsoft" button
+- OAuth flow redirects to Microsoft login page
+- After successful login, user lands on dashboard
+- Invalid credentials show appropriate error message
+- Session persists across browser refreshes
+
+#### 4.1.2 Session Management
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Maintain user session for 24 hours
+- Implement logout functionality
+- Clear tokens on logout
+
+---
+
+### 4.2 Dashboard
+
+#### 4.2.1 Main Dashboard View
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Display user's email address
+- Show "Generate Today's NOC Report" button prominently
+- Display date selector to choose report date (default: today)
+- Show timezone indicator (GMT+6)
+- Include logout button
+
+**Acceptance Criteria:**
+- Dashboard loads within 2 seconds
+- User email is displayed correctly
+- Date selector allows past date selection (up to 30 days)
+- Timezone is clearly indicated
+
+#### 4.2.2 Report Generation Trigger
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- "Generate Today's NOC Report" button initiates email parsing
+- Display loading indicator during processing
+- Show progress or status message
+- Handle errors gracefully with user-friendly messages
+
+---
+
+### 4.3 Email Processing
+
+#### 4.3.1 Email Retrieval
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Retrieve all emails received on selected date (GMT+6 timezone)
+- Retrieve all emails sent on selected date (GMT+6 timezone)
+- Filter by date range: 00:00:00 to 23:59:59 GMT+6
+- Handle pagination for large email volumes
+- Process both inbox and sent items
+
+**Technical Details:**
+- Use Microsoft Graph API `/me/messages` endpoint
+- Apply date filters in GMT+6
+- Retrieve minimum required fields: subject, body, from, to, receivedDateTime, sentDateTime
+
+#### 4.3.2 Email Parsing & Categorization
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Parse email subject and body for key information
+- Extract the following fields:
+  - Date & Time
+  - Client/Vendor Details
+  - Cause
+  - Downtime
+  - Category (Backhaul, Upstreams, IPT Client, ISP Client)
+  - Remarks
+
+**Categorization Logic:**
+- **Backhaul**: Keywords like "submarine cable", "backbone",  "BTCL", "BAHON", "Summit Backhaul", "Fiber At Home Backhaul", "F@H backhaul", "degraded capacity"
+- **Upstreams**: Keywords like "upstream provider", "upstream", "Route towards","NTT", "Orange", "Equinix", "RETN", "CMI", "PCCW"
+- **IPT Client**: Keywords like "BTCL", "BDHUB", "Skytel", "Fiber At Home", "BDHUB", "Equitel", "Skytel", "Peerex", "F@Home", "NOVOCOM", "BSNL", "Windstream", "Velocity", "Virgo", "Delta", "Exabyte", "Coronet", "Intraglobe", "Green Max", "BD-LINK", "ADN-GW", "Rego", "GFCL", "Max Hub Ltd."
+
+- **ISP Client**: Keywords like "NOVOCOM", "BDREN", "TELNET", "BDCCL","ADN", "Teletalk", "COL", "Pioneer", "COX-Link", "SS Online", "BDREN", "BDCCL", "Link3", "Dhaka-Link", "BDREN", "Race Online Ltd", "Telnet"
+
+
+**Issue Type Classification:**
+- **Service**: Keywords like "allow", "service allowed", "request to receive"
+- **Complain**: Keywords like "complain", "issue", "down", "high latency", "packet loss", "slowness"
+
+**Acceptance Criteria:**
+- 90% of emails are correctly categorized
+- All required fields are extracted when available
+- Unknown categories are flagged as "Uncategorized"
+
+#### 4.3.3 Report Compilation
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Group incidents by category (Backhaul, Upstreams, IPT Client, ISP Client)
+- Sort entries chronologically within each category
+- Generate summary statistics:
+  - Total Services
+  - Total New Complaints
+  - Recurring Complaints
+  - Complaints Unresolved
+  - Complaints Resolved
+
+**Calculations:**
+- **Total Services**: Count of entries with "Service" category
+- **Total New Complaints**: Count of entries with "Complain" category
+- **Recurring Complaints**: Count of complaints mentioned in multiple emails (same client + similar issue)
+- **Unresolved**: Complaints without resolution confirmation
+- **Resolved**: Complaints with resolution confirmation in email thread
+
+---
+
+### 4.4 Report Display & Editing
+
+#### 4.4.1 Editable Table View
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Display report in an editable table format
+- Table columns:
+  1. Category (dropdown)
+  2. Date & Time
+  3. Client/Vendor Details
+  4. Cause
+  5. Downtime (text field)
+  6. Category Type (Service/Complain - dropdown)
+  7. Remarks
+
+**Editing Capabilities:**
+- Inline editing for all fields
+- Add new rows manually
+- Delete rows
+- Reorder rows (drag & drop or move up/down buttons)
+- Auto-save changes to MongoDB
+
+**Acceptance Criteria:**
+- Users can click any cell to edit
+- Changes are saved automatically within 2 seconds
+- Add/Delete operations work without page refresh
+- Table is responsive on different screen sizes
+
+#### 4.4.2 Summary Statistics Panel
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- Display summary statistics above or beside the table
+- Statistics update automatically when table is edited
+- Show:
+  - Total Services: [count]
+  - Total New Complaints: [count]
+  - Recurring Complaints: [count]
+  - Complaints Unresolved: [count]
+  - Complaints Resolved: [count]
+
+---
+
+### 4.5 Export Functionality
+
+#### 4.5.1 Export to XLSX
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- "Export to XLSX" button
+- Generate Excel file with formatted report
+- Include summary statistics in separate section
+- Preserve table formatting (borders, headers)
+- File naming convention: `NOC_Report_YYYY-MM-DD.xlsx`
+
+**Excel Structure:**
+- Sheet 1: "NOC Report"
+  - Title: "Daily NOC Report of [Date]"
+  - Main table with all incidents
+  - Summary statistics section at bottom
+
+**Acceptance Criteria:**
+- XLSX file downloads successfully
+- All data is present and correctly formatted
+- File opens in Microsoft Excel without errors
+- Headers are bold and frozen
+
+#### 4.5.2 Export to PDF
+**Priority:** P0 (Must Have)
+
+**Requirements:**
+- "Export to PDF" button
+- Generate PDF matching the sample format (23_10.pdf)
+- Include:
+  - Header: "Daily NOC Report of [Date]"
+  - Categorized tables (Backhaul, Upstreams, IPT Client, ISP Client)
+  - Summary statistics table
+- File naming convention: `NOC_Report_YYYY-MM-DD.pdf`
+
+**PDF Styling:**
+- Professional layout matching sample
+- Clear section headers
+- Readable font sizes
+- Table borders and gridlines
+- Color coding for categories (optional)
+
+**Acceptance Criteria:**
+- PDF file downloads successfully
+- Layout matches sample format
+- All data is readable and properly aligned
+- File size < 5MB
+
+---
+
+### 4.6 Data Storage
+
+#### 4.6.1 MongoDB Integration
+**Priority:** P1 (Should Have)
+
+**Requirements:**
+- Store generated reports in MongoDB
+- Store user preferences and settings
+- Cache email data to avoid re-fetching
+
+**Collections:**
+
+**users**
+```json
+{
+  "_id": "ObjectId",
+  "email": "support.iig@bsccl.com",
+  "microsoftId": "unique_microsoft_id",
+  "accessToken": "encrypted_token",
+  "refreshToken": "encrypted_token",
+  "tokenExpiry": "timestamp",
+  "createdAt": "timestamp",
+  "lastLogin": "timestamp"
+}
+```
+
+**reports**
+```json
+{
+  "_id": "ObjectId",
+  "userId": "ObjectId (ref: users)",
+  "reportDate": "2025-10-23",
+  "timezone": "GMT+6",
+  "entries": [
+    {
+      "category": "Backhaul",
+      "dateTime": "2025-10-19",
+      "client": "NTT",
+      "cause": "Multiple submarine cable failures",
+      "downtime": "",
+      "categoryType": "Complain",
+      "remarks": "Issue ongoing until December"
+    }
+  ],
+  "summary": {
+    "totalServices": 2,
+    "totalNewComplaints": 5,
+    "recurringComplaints": 0,
+    "complaintsUnresolved": 4,
+    "complaintsResolved": 1
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
+
+**emailCache** (Optional - for optimization)
+```json
+{
+  "_id": "ObjectId",
+  "userId": "ObjectId",
+  "date": "2025-10-23",
+  "emails": [/* raw email data */],
+  "cachedAt": "timestamp",
+  "expiresAt": "timestamp"
+}
+```
+
+**Acceptance Criteria:**
+- Reports are saved successfully to MongoDB
+- Reports can be retrieved and edited later
+- Database connection is secure
+- Errors are logged for debugging
+
+---
+
+## 5. Non-Functional Requirements
+
+### 5.1 Performance
+- Dashboard load time: < 2 seconds
+- Report generation: < 30 seconds for 100 emails
+- Export operations: < 5 seconds
+- Database queries: < 500ms average response time
+
+### 5.2 Security
+- OAuth tokens encrypted at rest
+- HTTPS for all communications
+- No plain text password storage
+- Session timeout after 24 hours of inactivity
+- Secure MongoDB connection string (credentials not exposed in client-side code)
+
+### 5.3 Reliability
+- 99% uptime during business hours (GMT+6)
+- Graceful error handling with user notifications
+- Automatic retry for failed API calls (up to 3 attempts)
+
+### 5.4 Scalability
+- Support up to 50 concurrent users
+- Handle up to 1,000 emails per report generation
+- Database should support up to 10,000 reports
+
+### 5.5 Usability
+- Intuitive interface requiring < 5 minutes training
+- Mobile-responsive design (tablet and desktop)
+- Clear error messages and loading indicators
+- Consistent UI/UX patterns
+
+### 5.6 Browser Support
+- Chrome (latest 2 versions)
+- Firefox (latest 2 versions)
+- Safari (latest 2 versions)
+- Edge (latest 2 versions)
+
+---
+
+## 6. Technical Stack
+
+### 6.1 Frontend
+- **Framework**: Next.js 15 (latest version)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **State Management**: React Context API or Zustand
+- **HTTP Client**: Fetch API or Axios
+
+### 6.2 Backend
+- **API**: Next.js API Routes
+- **Authentication**: NextAuth.js with Microsoft Provider
+- **Email Processing**: Microsoft Graph API SDK
+
+### 6.3 Database
+- **Database**: MongoDB
+- **ODM**: Mongoose
+- **Connection String**: Provided (secured in environment variables)
+
+### 6.4 Export Libraries
+- **XLSX Generation**: xlsx or exceljs
+- **PDF Generation**: jsPDF or Puppeteer
+
+### 6.5 Deployment
+- **Platform**: Vercel (recommended) or custom hosting
+- **Environment**: Node.js 18+
+
+---
+
+## 7. User Flows
+
+### 7.1 First-Time User Flow
+1. User lands on landing/login page
+2. User clicks "Sign in with Microsoft"
+3. Redirected to Microsoft OAuth consent page
+4. User enters Microsoft credentials
+5. User grants email read permissions
+6. Redirected back to application dashboard
+7. User sees "Generate Today's NOC Report" button
+8. User clicks button
+9. System fetches and processes emails
+10. Report displayed in editable table
+11. User reviews and edits if needed
+12. User exports to XLSX or PDF
+
+### 7.2 Returning User Flow
+1. User lands on application
+2. If session valid, redirected to dashboard
+3. If session expired, prompted to login again
+4. User selects date for report
+5. User generates report
+6. User edits and exports report
+
+### 7.3 Report Generation Flow
+```
+User clicks "Generate Report"
+    ↓
+System shows loading indicator
+    ↓
+System fetches access token
+    ↓
+System calls Microsoft Graph API
+    ↓
+Retrieve emails for selected date (GMT+6)
+    ↓
+Parse each email for relevant data
+    ↓
+Categorize incidents
+    ↓
+Compile report structure
+    ↓
+Calculate summary statistics
+    ↓
+Save report to MongoDB
+    ↓
+Display editable table
+    ↓
+User can edit, save, or export
+```
+
+---
+
+## 8. API Specifications
+
+### 8.1 Microsoft Graph API Endpoints
+
+#### Get Messages
+```
+GET https://graph.microsoft.com/v1.0/me/messages
+```
+
+**Query Parameters:**
+- `$filter`: Filter by receivedDateTime
+- `$select`: Specify fields to retrieve
+- `$orderby`: Sort by date
+- `$top`: Number of messages per page
+
+**Example:**
+```
+GET /me/messages?$filter=receivedDateTime ge 2025-10-23T00:00:00Z and receivedDateTime le 2025-10-23T23:59:59Z&$select=subject,bodyPreview,from,receivedDateTime&$orderby=receivedDateTime desc
+```
+
+#### Get Sent Messages
+```
+GET https://graph.microsoft.com/v1.0/me/mailFolders/SentItems/messages
+```
+
+### 8.2 Application API Routes
+
+#### POST /api/auth/microsoft
+Initiates Microsoft OAuth flow
+
+#### GET /api/auth/callback
+Handles OAuth callback and token exchange
+
+#### POST /api/reports/generate
+Generates report for specified date
+
+**Request Body:**
+```json
+{
+  "date": "2025-10-23",
+  "timezone": "GMT+6"
+}
+```
+
+**Response:**
+```json
+{
+  "reportId": "ObjectId",
+  "entries": [...],
+  "summary": {...}
+}
+```
+
+#### PUT /api/reports/:reportId
+Updates report entries
+
+#### GET /api/reports/:reportId/export/xlsx
+Generates and returns XLSX file
+
+#### GET /api/reports/:reportId/export/pdf
+Generates and returns PDF file
+
+---
+
+## 9. Data Models
+
+### 9.1 Email Data Structure (from Microsoft Graph)
+```typescript
+interface Email {
+  id: string;
+  subject: string;
+  bodyPreview: string;
+  body: {
+    contentType: string;
+    content: string;
+  };
+  from: {
+    emailAddress: {
+      name: string;
+      address: string;
+    };
+  };
+  receivedDateTime: string;
+  sentDateTime: string;
+}
+```
+
+### 9.2 Report Entry Structure
+```typescript
+interface ReportEntry {
+  category: 'Backhaul' | 'Upstreams' | 'IPT Client' | 'ISP Client';
+  dateTime: string;
+  client: string;
+  cause: string;
+  downtime: string;
+  categoryType: 'Service' | 'Complain';
+  remarks: string;
+}
+```
+
+### 9.3 Report Summary Structure
+```typescript
+interface ReportSummary {
+  totalServices: number;
+  totalNewComplaints: number;
+  recurringComplaints: number;
+  complaintsUnresolved: number;
+  complaintsResolved: number;
+}
+```
+
+---
+
+## 10. UI/UX Specifications
+
+### 10.1 Login Page
+- Centered card layout
+- Application logo/title
+- "Sign in with Microsoft" button (Microsoft brand colors)
+- Brief description of the application
+- Clean, professional design
+
+### 10.2 Dashboard Layout
+**Header:**
+- Application title/logo (left)
+- User email display
+- Logout button (right)
+
+**Main Content Area:**
+- Date selector (dropdown or date picker)
+- "Generate Today's NOC Report" button (primary CTA)
+- Loading state with progress indicator
+- Report table (when generated)
+
+**Table Design:**
+- Fixed header row
+- Sortable columns
+- Editable cells (click to edit)
+- Row hover effects
+- Add/Delete row buttons
+
+**Export Section:**
+- "Export to XLSX" button
+- "Export to PDF" button
+- Download progress indicators
+
+### 10.3 Color Scheme
+- Primary: Blue (#0078D4 - Microsoft blue)
+- Secondary: Gray (#F3F2F1)
+- Success: Green (#107C10)
+- Warning: Orange (#FF8C00)
+- Error: Red (#D13438)
+- Text: Dark Gray (#323130)
+
+### 10.4 Typography
+- Headers: Sans-serif, bold
+- Body: Sans-serif, regular
+- Table: Monospace or sans-serif, readable size (14-16px)
+
+---
+
+## 11. Error Handling
+
+### 11.1 Authentication Errors
+- **Invalid credentials**: "Unable to sign in. Please check your Microsoft account credentials."
+- **Permission denied**: "Please grant permission to read emails to use this application."
+- **Token expired**: "Your session has expired. Please sign in again."
+
+### 11.2 Email Processing Errors
+- **No emails found**: "No emails found for the selected date."
+- **API rate limit**: "Too many requests. Please try again in a few minutes."
+- **Network error**: "Unable to fetch emails. Please check your internet connection."
+
+### 11.3 Export Errors
+- **Export failed**: "Unable to export report. Please try again."
+- **Large file**: "Report is too large to export. Please contact support."
+
+### 11.4 Database Errors
+- **Connection failed**: "Unable to save report. Please try again later."
+- **Save failed**: "Changes could not be saved. Please try again."
+
+---
+
+## 12. Testing Requirements
+
+### 12.1 Unit Testing
+- Email parsing functions
+- Categorization logic
+- Summary calculation functions
+- Date/time conversion utilities
+
+### 12.2 Integration Testing
+- Microsoft OAuth flow
+- Microsoft Graph API integration
+- MongoDB CRUD operations
+- Export functionality (XLSX, PDF)
+
+### 12.3 User Acceptance Testing (UAT)
+- End-to-end report generation
+- Manual editing and saving
+- Export downloads
+- Cross-browser compatibility
+
+### 12.4 Test Cases
+
+#### TC-001: Login with Microsoft
+- **Given**: User is on login page
+- **When**: User clicks "Sign in with Microsoft"
+- **Then**: User is redirected to Microsoft login
+- **And**: After successful login, user lands on dashboard
+
+#### TC-002: Generate Report
+- **Given**: User is logged in and on dashboard
+- **When**: User clicks "Generate Today's NOC Report"
+- **Then**: System fetches emails for today
+- **And**: Report is displayed in editable table
+- **And**: Summary statistics are calculated correctly
+
+#### TC-003: Edit Report
+- **Given**: Report is displayed
+- **When**: User clicks a cell and edits content
+- **Then**: Changes are saved automatically
+- **And**: Summary statistics update if applicable
+
+#### TC-004: Export to XLSX
+- **Given**: Report is generated
+- **When**: User clicks "Export to XLSX"
+- **Then**: XLSX file is downloaded
+- **And**: File contains all report data
+- **And**: File is properly formatted
+
+#### TC-005: Export to PDF
+- **Given**: Report is generated
+- **When**: User clicks "Export to PDF"
+- **Then**: PDF file is downloaded
+- **And**: PDF matches sample format
+- **And**: All data is readable
+
+---
+
+## 13. Security Considerations
+
+### 13.1 Data Privacy
+- Email content is processed in memory (not permanently stored in full)
+- Only extracted/structured data is saved to database
+- User access tokens are encrypted
+- No sharing of data between users
+
+### 13.2 Access Control
+- Users can only access their own emails
+- Users can only view/edit their own reports
+- Session-based authentication
+
+### 13.3 Secure Configuration
+- MongoDB credentials stored in environment variables
+- OAuth client secret stored securely
+- No sensitive data in client-side code
+- HTTPS enforced for all connections
+
+---
+
+## 14. Future Enhancements (Post-V1)
+
+### 14.1 Phase 2 Features
+- Historical report viewing and searching
+- Report templates for different NOC teams
+- Automated email categorization with machine learning
+- Real-time email monitoring and alerts
+- Multi-user collaboration on reports
+- Comments and annotations on report entries
+
+### 14.2 Phase 3 Features
+- Integration with ticketing systems (Jira, ServiceNow)
+- Automated incident trending and analytics
+- Dashboard with charts and visualizations
+- Scheduled report generation and email distribution
+- API for external integrations
+- Mobile application (iOS/Android)
+
+### 14.3 Advanced Features
+- Natural Language Processing for better email parsing
+- Predictive analytics for recurring issues
+- Integration with network monitoring tools
+- Custom report formats and branding
+- Multi-language support
+
+---
+
+## 15. Implementation Phases
+
+### Phase 1: MVP (Weeks 1-3)
+- Setup Next.js project with TypeScript
+- Implement Microsoft OAuth authentication
+- Build basic dashboard UI
+- Implement email fetching from Microsoft Graph API
+- Basic email parsing and categorization
+- Display report in simple table
+- MongoDB integration for data storage
+
+### Phase 2: Core Features (Weeks 4-5)
+- Editable table with inline editing
+- Add/Delete rows functionality
+- Summary statistics calculation
+- Auto-save functionality
+- XLSX export implementation
+
+### Phase 3: Polish & Export (Week 6)
+- PDF export implementation
+- UI/UX improvements
+- Error handling and validation
+- Loading states and progress indicators
+- Responsive design
+
+### Phase 4: Testing & Deployment (Week 7-8)
+- Unit and integration testing
+- User acceptance testing
+- Bug fixes and optimizations
+- Documentation
+- Deployment to production
+
+---
+
+## 16. Dependencies & Assumptions
+
+### 16.1 Dependencies
+- Microsoft Azure AD app registration for OAuth
+- MongoDB database availability
+- Microsoft Graph API access
+- Internet connectivity for users
+
+### 16.2 Assumptions
+- Users have valid Microsoft Outlook accounts
+- Users have permission to access their email via OAuth
+- Network incidents are communicated via email
+- Email format is semi-structured with identifiable patterns
+- Users are familiar with basic web applications
+
+---
+
+## 17. Risks & Mitigation
+
+### 17.1 Technical Risks
+
+**Risk**: Microsoft Graph API rate limits
+- **Impact**: High
+- **Probability**: Medium
+- **Mitigation**: Implement caching, batch requests, handle rate limit errors gracefully
+
+**Risk**: Email parsing accuracy
+- **Impact**: High
+- **Probability**: Medium
+- **Mitigation**: Implement manual editing capability, improve parsing with user feedback
+
+**Risk**: Large email volumes
+- **Impact**: Medium
+- **Probability**: Low
+- **Mitigation**: Implement pagination, background processing, progress indicators
+
+### 17.2 Business Risks
+
+**Risk**: Low user adoption
+- **Impact**: High
+- **Probability**: Low
+- **Mitigation**: User training, clear documentation, gather feedback early
+
+**Risk**: Data accuracy concerns
+- **Impact**: High
+- **Probability**: Medium
+- **Mitigation**: Allow manual editing, provide audit trail, user validation
+
+---
+
+## 18. Success Criteria
+
+### 18.1 Launch Criteria
+- [ ] All P0 features implemented and tested
+- [ ] Microsoft OAuth authentication working
+- [ ] Email parsing accuracy > 85%
+- [ ] Export functionality working for both XLSX and PDF
+- [ ] No critical bugs
+- [ ] User documentation complete
+
+### 18.2 Post-Launch Success Metrics (30 days)
+- User adoption rate > 80%
+- Report generation success rate > 95%
+- Average time to generate report < 2 minutes
+- User satisfaction score > 4/5
+- Reduction in manual reporting time > 70%
+
+---
+
+## 19. Support & Maintenance
+
+### 19.1 User Support
+- User documentation and FAQ
+- Email support during business hours
+- Bug reporting mechanism
+
+### 19.2 Maintenance
+- Monthly security updates
+- Quarterly feature updates
+- Database backups (daily)
+- Monitor API usage and rate limits
+
+---
+
+## 20. Appendices
+
+### Appendix A: Sample Email Patterns
+
+**Service Request Email:**
+```
+Subject: Service Request - BDHUB PREFIX ALLOW
+Body: Please allow BDHUB prefix. Service requested.
+```
+
+**Complaint Email:**
+```
+Subject: High Latency Issue - NOVOCOM
+Body: Customer reporting high latency and packet loss. Destination IP: 209.166.153.25
+```
+
+**Resolution Email:**
+```
+Subject: Re: High Latency Issue - NOVOCOM
+Body: Issue has been resolved. Forward path optimized.
+```
+
+### Appendix B: Microsoft OAuth Scopes Required
+- `Mail.Read`: Read user's emails
+- `User.Read`: Read user profile (email address)
+
+### Appendix C: MongoDB Connection String
+```
+mongodb://root:AD5Db8zE1N0R1bs0LZEfU1winw7QvEzkAYp4Gt2AEIcvhrtVmir5PqcOS826vNtM@os88swc4g4cwo8g8c8gs88c4:27017/?directConnection=true
+```
+*Note: Store in environment variable, never in source code*
+
+---
+
+## Document Revision History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | Oct 24, 2025 | Product Team | Initial PRD creation |
+
+---
+
+## Approval Sign-off
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| Product Owner | | | |
+| Technical Lead | | | |
+| Stakeholder | | | |
