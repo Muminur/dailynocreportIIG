@@ -11,13 +11,19 @@ const customJestConfig = {
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '\\.svg$': '<rootDir>/__mocks__/svg.js',
   },
   testMatch: [
     '**/__tests__/**/*.[jt]s?(x)',
     '**/?(*.)+(spec|test).[jt]s?(x)',
   ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/e2e/',
+    '/.next/',
+  ],
   transformIgnorePatterns: [
-    'node_modules/(?!(bson|mongodb|exceljs|jspdf)/)',
+    'node_modules/(?!(bson|mongodb|exceljs|jspdf|uuid)/)',
   ],
 }
 

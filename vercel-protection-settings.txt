@@ -1,0 +1,7 @@
+To disable Vercel deployment protection:
+
+1. Go to: https://vercel.com/iig-reports-projects/noc-email-report-generator/settings/deployment-protection
+2. Under "Deployment Protection", select "Disabled"
+3. Click "Save"
+
+This will allow public access to your production site.
